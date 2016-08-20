@@ -1,2 +1,2 @@
 # quickfault
-Randomized fault injection
+Randomized fault injection for automated tests.
