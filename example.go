@@ -36,7 +36,21 @@ func GetBarValueFromTable(c Getter) (string, error) {
 }
 
 func example(t Getter) (string, error) {
-	foo, _ := GetFooValueFromTable(t)
-	bar, _ := GetBarValueFromTable(t)
+	foo, err := GetFooValueFromTable(t)
+	if err != nil {
+		return "", err
+	}
+	if foo == "" {
+		return "", fmt.Errorf("couldn't access foo")
+	}
+
+	bar, err := GetBarValueFromTable(t)
+	if err != nil {
+		return "", err
+	}
+	if bar == "" {
+		return "", fmt.Errorf("couldn't access bar")
+	}
+
 	return foo+bar, nil
 }
