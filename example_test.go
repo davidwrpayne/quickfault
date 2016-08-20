@@ -8,17 +8,13 @@ import (
 
 type FaultyTable struct {
 	Risk float32
-	Fault bool
+	fault bool
 	Table Table
-}
-
-type Faulter interface {
-	FaultOccured() bool
 }
 
 func (t *FaultyTable) Get(k string) (string, error) {
 	if rand.Float32() < t.Risk {
-		t.Fault = true
+		t.fault = true
 		switch rand.Intn(2) {
 		case 0:
 			return "", nil
@@ -29,8 +25,12 @@ func (t *FaultyTable) Get(k string) (string, error) {
 	return t.Table.Get(k)
 }
 
-func (f FaultyTable) FaultOccured() bool {
-	return f.Fault
+func (f FaultyTable) Fault() bool {
+	return f.fault
+}
+
+func (f *FaultyTable) Reset() {
+	f.fault = false
 }
 
 func TestExample_Positive(t *testing.T) {
@@ -49,7 +49,7 @@ func TestExample_Positive(t *testing.T) {
 
 func TestExample_Negative(t *testing.T) {
 	// wrap the Table in a FaultyTable
-	table := FaultyTable{
+	table := &FaultyTable{
 		Risk: 0.2,
 		Table: Table{
 			Data: map[string]string{
@@ -59,26 +59,42 @@ func TestExample_Negative(t *testing.T) {
 		},
 	}
 
-	max := 100
-	min := 10
+	Check(func() error {
+		actual, err := example(table)
+
+		// property 1 - on failure, expect empty output
+		if actual != "" {
+			return fmt.Errorf("fault should result in empty output")
+		}
+
+		// property 2 - on failure, expect an err
+		if err == nil {
+			return fmt.Errorf("fault should result in err")
+		}
+
+		return nil
+	}, table, 10, 100)
+}
+
+type Q interface {
+	Reset()
+	Fault() bool
+}
+
+func Check(h func() error, q Q, min int, max int) error {
 	j := 0
 	for i := 0; i < max && j < min; i++ {
-		actual, err := example(&table)
-		if table.FaultOccured() {
-			if actual != "" {
-				t.Logf("expected '' on fault not '%s'", actual)
-				t.Fail()
-			}
-			if err == nil {
-				t.Logf("expected err on fault, got nil")
-				t.Fail()
+		q.Reset()
+		err := h()
+		if q.Fault() {
+			if err != nil {
+				return fmt.Errorf("test failure: %s", err)
 			}
 			j++
 		}
-		table.Fault = false
 	}
 	if j < min {
-		t.Logf("Failed to generate enough faults, wanted %d but got %d", min, j)
-		t.Fail()
+		return fmt.Errorf("failed to generate enough test cases, needed %d got %d", min, j)
 	}
+	return nil
 }
