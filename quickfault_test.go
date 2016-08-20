@@ -1,10 +1,64 @@
-package quickfault
+package quickfault_test
 
 import (
 	"testing"
 	"math/rand"
 	"fmt"
+	"github.com/brentdrich/quickfault"
 )
+
+type Getter interface {
+	Get(string) (string, error)
+}
+
+type Table struct {
+	Fail bool
+	Data map[string]string
+}
+
+// Get is part of a contrived key value store that has the
+// following properties:
+//  1. When there is a network failure, it errors out.
+//  2. When a value can't be found for a key, it returns "".
+//  3. When a value is found for a key, it returns the value.
+func (t *Table) Get(k string) (string, error) {
+	if t.Fail {
+		return "", fmt.Errorf("failed to connect.")
+	}
+	if v, ok := t.Data[k]; ok {
+		return v, nil
+	} else {
+		return "", nil
+	}
+}
+
+func GetFooValueFromTable(c Getter) (string, error) {
+	return c.Get("foo")
+}
+
+func GetBarValueFromTable(c Getter) (string, error) {
+	return c.Get("bar")
+}
+
+func example(t Getter) (string, error) {
+	foo, err := GetFooValueFromTable(t)
+	if err != nil {
+		return "", err
+	}
+	if foo == "" {
+		return "", fmt.Errorf("couldn't access foo")
+	}
+
+	bar, err := GetBarValueFromTable(t)
+	if err != nil {
+		return "", err
+	}
+	if bar == "" {
+		return "", fmt.Errorf("couldn't access bar")
+	}
+
+	return foo+bar, nil
+}
 
 type FaultyTable struct {
 	Risk float32
@@ -59,7 +113,7 @@ func TestExample_Negative(t *testing.T) {
 		},
 	}
 
-	Check(func() error {
+	quickfault.Check(func() error {
 		actual, err := example(table)
 
 		// property 1 - on failure, expect empty output
@@ -74,27 +128,4 @@ func TestExample_Negative(t *testing.T) {
 
 		return nil
 	}, table, 10, 100)
-}
-
-type Q interface {
-	Reset()
-	Fault() bool
-}
-
-func Check(h func() error, q Q, min int, max int) error {
-	j := 0
-	for i := 0; i < max && j < min; i++ {
-		q.Reset()
-		err := h()
-		if q.Fault() {
-			if err != nil {
-				return fmt.Errorf("test failure: %s", err)
-			}
-			j++
-		}
-	}
-	if j < min {
-		return fmt.Errorf("failed to generate enough test cases, needed %d got %d", min, j)
-	}
-	return nil
 }
